@@ -99,7 +99,7 @@ int main(int argc, char * argv[])
             }
 
             while(1) {
-                printf("1");
+                printf("12");
             }
    
 
