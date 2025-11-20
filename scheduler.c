@@ -96,11 +96,11 @@ int main(int argc, char * argv[])
                     process_count++;
                     PRINT_READY_QUEUE();
                 }
-                
-               
-            
+            }
 
-        }
+            while(1) {
+                printf("1");
+            }
    
 
 
