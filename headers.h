@@ -94,6 +94,21 @@ void print_PCB_list(PCB* head){
     }
 }
 
+// added
+PCB* GET_PCB(PCB* head, int id) {
+    PCB* temp = head;
+
+    while (temp != NULL) {
+        if (temp->p.ID == id) {
+            return temp;
+        }
+        temp = temp->next;
+    }
+
+    // not found
+    return NULL;
+}
+
 void clear_PCB_list(PCB* head){
     PCB* temp=head;
     while(temp!=NULL){

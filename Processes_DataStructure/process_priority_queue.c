@@ -37,7 +37,7 @@ bool enqueue_priority(process_priority_queue* Priority_Queue, process Process)
     if (is_priority_queue_empty(Priority_Queue)) {
         Priority_Queue->front = new_node;
         Priority_Queue->rear = new_node;
-        return 0; // Success
+        return true; // Success
     }
 
     process_PNode* current = Priority_Queue->front;
@@ -123,15 +123,13 @@ process* Process;
     return Process;
 }
 
+// added
 process* peek_priority_front(process_priority_queue* Priority_Queue)
 {
-    
     if (is_priority_queue_empty(Priority_Queue))
-        return NULL; // Invalid queue pointer or empty queue
+        return NULL;
 
-    process* process =malloc(sizeof(process));
-    *process=Priority_Queue->front->Process;
-    return process;
+    return &Priority_Queue->front->Process;
 }
 
 

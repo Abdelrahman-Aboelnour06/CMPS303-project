@@ -20,6 +20,25 @@ Done by Omar Syed
 */
 /*---------------------------------QUEUES&PCB------------------------------------*/
 
+
+// handle process termination
+process *curProcess = NULL;
+PCB *pcbHead = NULL;
+void childHandler(int SIGNUM) {
+    int status;
+    int childPID = wait(&status);
+
+    //update its PCB
+    PCB *pcb = GET_PCB(pcbHead, childPID);
+    pcb->process_state = Finished;
+    pcb->is_completed = true;
+    pcb->FINISH_TIME = getClk();
+    pcb->REMAINING_TIME = 0;
+
+    //current now is null
+    curProcess = NULL;
+}
+
 //cpu bound --> no blocking queue
 PCB PCB_ENTRY;
 process_queue READY_QUEUE;
@@ -49,7 +68,9 @@ void PRINT_READY_PRIORITY_QUEUE(){
     printf("\n");
 }
 
+int process_count=0;
 int PID[max];
+int j =0;
 /*---------------------------------Omar Syed------------------------------------*/
 int main(int argc, char * argv[])
 {
@@ -69,42 +90,92 @@ int main(int argc, char * argv[])
         printf("Error In Creating Message Queue!\n");
     }
     message_buf PROCESS_MESSAGE;
-    int process_count=0;
-    /*---------------------------Omar Syed------------------------------------*/
-    
-        
-            // printf("Scheduling Algorithm is Round Robin with Time Quantum = %d\n",TIME_QUANTUM);
-            int firsttime =true; // TODO::fix this to be when queue is empty
-            process_Node* current_process;
-            while(1){
-                int rec_status = msgrcv(MESSAGE_ID,&PROCESS_MESSAGE, sizeof(message_buf),2,IPC_NOWAIT);
-                if(rec_status!=-1)
-                {
-                    clock_timer = getClk();
-                    printf("clock now is: %d\n",clock_timer);
-                    printf("Process received with id %d & arritval time %d & priority %d and scheduling algorithm %d \n"
-                    ,PROCESS_MESSAGE.p.ID,PROCESS_MESSAGE.p.ARRIVAL_TIME,PROCESS_MESSAGE.p.PRIORITY,selected_Algorithm_NUM);
-                    PCB_ENTRY.p=PROCESS_MESSAGE.p;
-                    PCB_ENTRY.REMAINING_TIME=PROCESS_MESSAGE.p.RUNNING_TIME;
-                    PCB_ENTRY.RUNNING_TIME=0;
-                    PCB_ENTRY.START_TIME=-1;
-                    PCB_ENTRY.LAST_EXECUTED_TIME=-1;
-                    PCB_ENTRY.FINISH_TIME=-1;
-                    PCB_ENTRY.process_state=Ready;
-                    PCB_ENTRY.is_completed=false;
-                    enqueue(&READY_QUEUE, PROCESS_MESSAGE.p);
-                    process_count++;
-                    PRINT_READY_QUEUE();
+
+    // -=-=-=-=--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=--=-=-=-=-=-=-=-=-=-=-=-=-
+    // if algorthim is HPF
+    signal(SIGCHLD, childHandler);
+    process_priority_queue *queue = malloc(sizeof(process_priority_queue));
+    initialize_priority_queue(queue);
+    while (1) {
+        //check for ready processes + preempte if higher priority
+        printf("check1, process%d\n\n", j);
+        int status = msgrcv(MESSAGE_ID,&PROCESS_MESSAGE, sizeof(message_buf),2,IPC_NOWAIT);
+        printf("%d\n", status);
+        if(status != -1) {
+            enqueue_priority(queue, PROCESS_MESSAGE.p); //enqueue new process
+            printf("check2, process%d\n\n", j);
+            //preemption check
+            if (curProcess != NULL && (peek_priority_front(queue)->PRIORITY < curProcess->PRIORITY)) {
+                //stop current
+                printf("check3, process%d\n\n", j);
+                kill(curProcess->ID, SIGSTOP);
+                
+                //update current pcb
+                PCB *pcb = GET_PCB(pcbHead, curProcess->ID);
+                pcb->process_state = Ready;
+                pcb->REMAINING_TIME -= (getClk() - pcb->LAST_EXECUTED_TIME);
+                pcb->LAST_EXECUTED_TIME = getClk();
+                
+                //enqueue current
+                enqueue_priority(queue, *curProcess);
+
+                //current = NULL, if below will handle the higher priority
+                curProcess = NULL;
+                printf("check4, process%d\n\n", j);
+            }
+        }
+        printf("check5, process%d\n\n", j);
+        //run a process from ready queue if no process is running already
+        if (curProcess == NULL && !is_priority_queue_empty(queue)) {
+            printf("check6, process%d\n\n", j);
+            curProcess = dequeue_priority(queue);
+            PCB *pcb = GET_PCB(pcbHead, curProcess->ID);
+
+            //if already started
+            if (pcb) {
+                //update resumed pcb + continue it
+                pcb->process_state = Running;
+                pcb->WAITING_TIME += (getClk() - pcb->LAST_EXECUTED_TIME);
+                kill(curProcess->ID, SIGCONT);
+                pcb->LAST_EXECUTED_TIME = getClk();
+            }
+            //if first time to run
+            else {
+                printf("check7, process%d\n\n", j);
+                pcb = malloc(sizeof(PCB));
+                INITIALIZE_PCB(pcb);
+                pcb->p = *curProcess;
+                pcb->process_state = Running;
+                pcb->START_TIME = getClk();
+                pcb->LAST_EXECUTED_TIME = getClk();
+                pcb->REMAINING_TIME = curProcess->RUNNING_TIME;
+                pcb->WAITING_TIME = 0;
+                pcb->is_completed = false;
+                enqueue_PCB(&pcbHead, pcb);
+
+                int pid = fork();
+                if (pid == 0) {
+                    char remainTime[16];
+                    char ID[16];
+                    sprintf(remainTime, "%d", pcb->REMAINING_TIME);
+                    sprintf(ID, "%d", curProcess->ID);
+                    if (execl("./process.out", "process.out", remainTime, ID, NULL) == -1) {
+                        perror("execl failed");
+                        exit(1);
+                    }
+                }
+                else if (pid > 0) PID[process_count++] = pid;
+                else {
+                    perror("fork failed");
+                    exit(1);
                 }
             }
+        }
+        j++;
+    }
+    free_priority_queue(queue);
+    dequeue_PCB(&pcbHead);
+    // -=-=-=-=--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=--=-=-=-=-=-=-=-=-=-=-=-=-
 
-            while(1) {
-                printf("12");
-            }
-   
-
-
-
-destroyClk(true);
-
+    destroyClk(true);
 }
