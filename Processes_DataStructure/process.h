@@ -7,11 +7,9 @@ typedef short bool;
 typedef struct process{
     int ID;  
     int ARRIVAL_TIME;
-    //int RETURN_CODE;
     int PRIORITY;
     int RUNNING_TIME;
     int DEPENDENCY_ID;
-    //char* NAME;
     int first_time;
 } process;
 
