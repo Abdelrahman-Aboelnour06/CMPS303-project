@@ -37,6 +37,7 @@ struct message_buf{
 
 struct PCB_struct{
     process p;
+    int pid;
     state process_state;
     int REMAINING_TIME;
     int WAITING_TIME;

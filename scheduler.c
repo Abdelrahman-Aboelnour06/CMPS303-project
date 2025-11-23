@@ -29,7 +29,8 @@ void childHandler(int SIGNUM) {
     int childPID = wait(&status);
 
     //update its PCB
-    PCB *pcb = GET_PCB(pcbHead, childPID);
+    int ID = WEXITSTATUS(status);
+    PCB *pcb = GET_PCB(pcbHead, ID);
     pcb->process_state = Finished;
     pcb->is_completed = true;
     pcb->FINISH_TIME = getClk();
@@ -68,9 +69,12 @@ void PRINT_READY_PRIORITY_QUEUE(){
     printf("\n");
 }
 
-int process_count=0;
+void asd(int signum) {
+    printf("hi, i was signaled :)\n");
+}
+
+int process_count=1;
 int PID[max];
-int j =0;
 /*---------------------------------Omar Syed------------------------------------*/
 int main(int argc, char * argv[])
 {
@@ -94,54 +98,50 @@ int main(int argc, char * argv[])
     // -=-=-=-=--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=--=-=-=-=-=-=-=-=-=-=-=-=-
     // if algorthim is HPF
     signal(SIGCHLD, childHandler);
+    signal(SIGUSR1, asd);
     process_priority_queue *queue = malloc(sizeof(process_priority_queue));
     initialize_priority_queue(queue);
     while (1) {
         //check for ready processes + preempte if higher priority
-        printf("check1, process%d\n\n", j);
         int status = msgrcv(MESSAGE_ID,&PROCESS_MESSAGE, sizeof(message_buf),2,IPC_NOWAIT);
-        printf("%d\n", status);
-        if(status != -1) {
+        if(status != -1)
             enqueue_priority(queue, PROCESS_MESSAGE.p); //enqueue new process
-            printf("check2, process%d\n\n", j);
-            //preemption check
-            if (curProcess != NULL && (peek_priority_front(queue)->PRIORITY < curProcess->PRIORITY)) {
-                //stop current
-                printf("check3, process%d\n\n", j);
-                kill(curProcess->ID, SIGSTOP);
-                
+
+        //preemption check
+        if (curProcess != NULL && !is_priority_queue_empty(queue)) {
+            if (peek_priority_front(queue)->PRIORITY < curProcess->PRIORITY) { //new have higher priority
                 //update current pcb
                 PCB *pcb = GET_PCB(pcbHead, curProcess->ID);
-                pcb->process_state = Ready;
-                pcb->REMAINING_TIME -= (getClk() - pcb->LAST_EXECUTED_TIME);
-                pcb->LAST_EXECUTED_TIME = getClk();
-                
+
+                //stop current
+                kill(pcb->pid, SIGSTOP);
+                printf("STOP sent to %d\n", pcb->pid);
+
                 //enqueue current
                 enqueue_priority(queue, *curProcess);
+                printf("i stopped process %d because %d had higher pri", curProcess->ID, PROCESS_MESSAGE.p.ID);
 
                 //current = NULL, if below will handle the higher priority
                 curProcess = NULL;
-                printf("check4, process%d\n\n", j);
             }
         }
-        printf("check5, process%d\n\n", j);
+
         //run a process from ready queue if no process is running already
         if (curProcess == NULL && !is_priority_queue_empty(queue)) {
-            printf("check6, process%d\n\n", j);
             curProcess = dequeue_priority(queue);
             PCB *pcb = GET_PCB(pcbHead, curProcess->ID);
 
-            //if already started
-            if (pcb) {
-                //update resumed pcb + continue it
+            //if already started, continue
+            if (pcb && pcb->START_TIME > 0) { 
+                printf("need to continue\n");
                 pcb->process_state = Running;
                 pcb->WAITING_TIME += (getClk() - pcb->LAST_EXECUTED_TIME);
-                kill(curProcess->ID, SIGCONT);
                 pcb->LAST_EXECUTED_TIME = getClk();
+                kill(pcb->pid, SIGCONT);
+                printf("CONT sent to %d\n", pcb->pid);
             }
-            //if first time to run
+            //if first time to run, create    
             else {
-                printf("check7, process%d\n\n", j);
                 pcb = malloc(sizeof(PCB));
                 INITIALIZE_PCB(pcb);
                 pcb->p = *curProcess;
@@ -164,14 +164,16 @@ int main(int argc, char * argv[])
                         exit(1);
                     }
                 }
-                else if (pid > 0) PID[process_count++] = pid;
+                else if (pid > 0) {
+                    PID[process_count++] = pid;
+                    pcb->pid = pid;
+                }
                 else {
                     perror("fork failed");
                     exit(1);
                 }
             }
         }
-        j++;
     }
     free_priority_queue(queue);
     dequeue_PCB(&pcbHead);
