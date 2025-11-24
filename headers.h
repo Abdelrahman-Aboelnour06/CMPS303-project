@@ -202,7 +202,6 @@ typedef struct {
     PcbNode* rear;
 } PcbPriorityQueue;
 
-// -----------------------------
 // Initialize queue
 void initializePriorityQueue(PcbPriorityQueue* queue) {
     if (!queue) return;
@@ -280,6 +279,49 @@ void freePriorityQueue(PcbPriorityQueue* queue) {
     }
     queue->front = NULL;
     queue->rear = NULL;
+}
+
+bool removeFromQueue(PcbPriorityQueue* queue, PCB* pcb) {
+    if (!queue || !pcb || isPriorityQueueEmpty(queue))
+        return false;
+
+    PcbNode* current = queue->front;
+    PcbNode* prev = NULL;
+
+    while (current) {
+        if (current->pcb == pcb) {
+            // Found node to remove
+            if (!prev) {
+                // Removing front
+                queue->front = current->next;
+                if (!queue->front) queue->rear = NULL;
+            } else {
+                prev->next = current->next;
+                if (!current->next) queue->rear = prev;
+            }
+            free(current);
+            return true;
+        }
+        prev = current;
+        current = current->next;
+    }
+
+    // PCB not found in queue
+    return false;
+}
+
+bool updatePriority(PcbPriorityQueue* queue, PCB* pcb, int newPriority) {
+    if (!queue || !pcb)
+        return false;
+
+    // Change the priority in the PCB itself
+    pcb->priority = newPriority;
+
+    // Remove from queue if it exists
+    removeFromQueue(queue, pcb);
+
+    // Re-insert based on new priority
+    return enqueuePriority(queue, pcb);
 }
 
 ///==============================

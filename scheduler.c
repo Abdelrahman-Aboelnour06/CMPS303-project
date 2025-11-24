@@ -228,62 +228,79 @@ void handler(int signum){
 
 // -=-=-=-=-
 
+PCB* pcbArray[max];
 int pcbCount = 0;
 PCB* runningPcb = NULL;
 PcbPriorityQueue readyPriorityQueue;
 
-void myHandler(int signum) {
-    for (int i = 0; i < pcbCount; i++) {
-        int result = waitpid(pcb[i].process_pid, NULL, 0);
-        if (result != -1) { // child finished
-            pcb[i].process_state = Finished;
-            pcb[i].is_completed = true;
-            pcb[i].FINISH_TIME = getClk();
+PCB* getPcbById(int processId) {
+    for (int i = 0; i < pcbCount; i++)
+        if (pcbArray[i]->process_id == processId)
+            return pcbArray[i];
+    return NULL;
+}
 
-            // update dependent PCBs
+PCB* getPcbByPid(int pid) {
+    for (int i = 0; i < pcbCount; i++)
+        if (pcbArray[i]->process_pid == pid)
+            return pcbArray[i];
+    return NULL;
+}
+
+void myHandler(int signum) {
+    int status;
+    int finishedPid = wait(&status); // only one child finishes
+
+    PCB* finished = getPcbByPid(finishedPid);
+    if (!finished) return;
+
+    finished->process_state = Finished;
+    finished->is_completed = 1;
+    finished->FINISH_TIME = getClk();
+    runningPcb = NULL;
+
+    // Update dependent PCBs
+    for (int i = 0; i < pcbCount; i++) {
+        if (pcbArray[i]->dependency_id == finished->process_id) {
+            pcbArray[i]->dependency_id = -1;
+
+            // Re-enqueue to update its position in queue
+            // First, remove if already in queue
             PcbNode* node = readyPriorityQueue.front;
-            while (node != NULL) {
-                PCB* X = node->pcb;
-                if (X->dependency_id == pcb[i].process_id) {
-                    X->dependency_id = -1;
-                    enqueuePriority(&readyPriorityQueue, X);
+            PcbNode* prev = NULL;
+            while (node) {
+                if (node->pcb == pcbArray[i]) {
+                    if (prev) prev->next = node->next;
+                    else readyPriorityQueue.front = node->next;
+                    if (node == readyPriorityQueue.rear) readyPriorityQueue.rear = prev;
+                    free(node);
+                    break;
                 }
+                prev = node;
                 node = node->next;
             }
 
-            if (runningPcb == &pcb[i])
-                runningPcb = NULL;
+            enqueuePriority(&readyPriorityQueue, pcbArray[i]);
         }
     }
-}
 
-PCB* getPcbById(int processId) {
-    for (int i = 0; i < pcbCount; i++) {
-        if (pcb[i].process_id == processId)
-            return &pcb[i];
-    }
-    return NULL;
-}
-
-PCB* getPcbByPid(int processPid) {
-    for (int i = 0; i < pcbCount; i++) {
-        if (pcb[i].process_pid == processPid)
-            return &pcb[i];
-    }
-    return NULL;
+    // Log
+    pFile = fopen("scheduler_log.txt", "a");
+    fprintf(pFile, "At time %d process %d finished\n", getClk(), finished->process_id);
+    fclose(pFile);
 }
 
 void runPcb(PCB* p) {
     // first time
     if (!p->STARTED) {
         int pid = fork();
-        if (pid == 0) {
+        if (pid == 0) { // if child
             char timeArg[16];
             sprintf(timeArg, "%d", p->REMAINING_TIME);
             execl("./process", "process", timeArg, NULL);
             exit(1);
         }
-        else {
+        else {         // if parent
             p->process_pid = pid;
             p->STARTED = true;
             p->process_state = Running;
@@ -417,27 +434,29 @@ int main(int argc, char * argv[])
 
 
         if (selected_Algorithm_NUM == 1) {
-            // preemption check
-            PCB* frontPcb = peekPriorityFront(&readyPriorityQueue);
-            if (runningPcb != NULL && frontPcb != NULL && frontPcb->priority < runningPcb->priority) {
-                kill(runningPcb->process_pid, SIGSTOP);
-                enqueuePriority(&readyPriorityQueue, runningPcb);
-                runningPcb = dequeuePriority(&readyPriorityQueue);
-                runPcb(runningPcb);
+            // Preemption: check if higher priority arrived
+            if (runningPcb != NULL && !isPriorityQueueEmpty(&readyPriorityQueue)) {
+                PCB* front = peekPriorityFront(&readyPriorityQueue);
+                if (front->priority < runningPcb->priority) {
+                    kill(runningPcb->process_pid, SIGSTOP);
+                    enqueuePriority(&readyPriorityQueue, runningPcb);
+                    runningPcb = dequeuePriority(&readyPriorityQueue);
+                    runPcb(runningPcb);
+                }
             }
 
-            // if no current running process
+            // No current running process
             if (runningPcb == NULL && !isPriorityQueueEmpty(&readyPriorityQueue)) {
                 runningPcb = dequeuePriority(&readyPriorityQueue);
 
-                // dep check
+                // Dependency check
                 if (runningPcb->dependency_id != -1) {
-                    PCB* depPcb = getPcbById(runningPcb->dependency_id);
-                    if (depPcb && !depPcb->is_completed) {
-                        depPcb->priority = 0; // make what it depend on max priority
-                        enqueuePriority(&readyPriorityQueue, depPcb);
+                    PCB* dep = getPcbById(runningPcb->dependency_id);
+                    if (dep && !dep->is_completed) {
+                        dep->priority = 0; // make dep max priority
+                        enqueuePriority(&readyPriorityQueue, dep);
                         runningPcb = NULL;
-                        continue;
+                        continue; // wait for dep to finish
                     }
                 }
 
