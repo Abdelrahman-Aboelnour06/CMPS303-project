@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 #include "Processes_DataStructure/process.h"
+#include "./Processes_DataStructure/process.h"
 
 
 void clearResources(int);
@@ -59,6 +60,7 @@ int main(int argc, char * argv[])
             }
         sscanf(line,"%d %d %d %d %d",&process_list[count].ID,&process_list[count].ARRIVAL_TIME,&process_list[count].RUNNING_TIME,&process_list[count].PRIORITY,&process_list[count].DEPENDENCY_ID);//read int from str
          count++;
+         printf("Read process %d dep_id=%d\n", process_list[count].ID, process_list[count].DEPENDENCY_ID);
         s=fgets(line,2*max,input_File);
     }
         fclose(input_File);
@@ -145,7 +147,8 @@ int main(int argc, char * argv[])
                 process_list[i].first_time=true;
                 PROCESS_MESSAGE.msgtype=2;
                 PROCESS_MESSAGE.p=process_list[i];
-                if(msgsnd(MESSAGE_ID,&PROCESS_MESSAGE,sizeof(message_buf) - sizeof(long),!IPC_NOWAIT)==-1){
+                printf("Sending process %d dep_id=%d\n", process_list[i].ID, process_list[i].DEPENDENCY_ID);
+                if(msgsnd(MESSAGE_ID,&PROCESS_MESSAGE,sizeof(process),!IPC_NOWAIT)==-1){
                     printf("Error In Sending Message To Scheduler!\n");
                 }else{
                     printf("Process with id %d sent to scheduler at time %d\n",process_list[i].ID,getClk());

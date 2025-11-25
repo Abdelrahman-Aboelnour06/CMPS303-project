@@ -26,7 +26,7 @@ typedef short bool;
 #define SHKEY 300
 // struct 
 
-typedef enum { Ready, Running, Finished, Waiting} state;
+typedef enum { Ready, Running, Finished} state;
 
 typedef char* string;
 
@@ -44,7 +44,6 @@ struct PCB_struct{
     bool STARTED;              // true if forked at least once
     int REMAINING_TIME;        // runtime left
     int RUNNING_TIME;          // total runtime
-    int WAITING_TIME;          // for statistics
     int START_TIME;            // first execution
     int LAST_EXECUTED_TIME;    // last time slice
     int FINISH_TIME;           // termination time
@@ -72,12 +71,12 @@ typedef struct PCB_linked_list
 void INITIALIZE_PCB(PCB* pcb){
     pcb->process_state=Ready;
     pcb->REMAINING_TIME=0;
-    pcb->WAITING_TIME=0;
     pcb->RUNNING_TIME=0;
     pcb->START_TIME=-1;
     pcb->LAST_EXECUTED_TIME=-1;
     pcb->FINISH_TIME=-1;
     pcb->process_pid=-1;
+    pcb->dependency_id=0;
     pcb->is_completed=false;
 }
 void INITIALIZE_PCB_Node(PCB_node* pcb_node){
