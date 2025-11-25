@@ -346,37 +346,46 @@ bool depCheck(PCB* p) {
 void hpfLoop(int currentTick) {
     timer = currentTick;
 
-    // Preemption check
+    // PREEMPTION CHECK
     if (runningPcb != NULL && !isPriorityQueueEmpty(&readyPriorityQueue)) {
-        if (peekPriorityFront(&readyPriorityQueue)->priority < runningPcb->priority) {
+        PCB* top = peekPriorityFront(&readyPriorityQueue);
+
+        if (top->priority < runningPcb->priority) {
             kill(runningPcb->process_pid, SIGSTOP);
             enqueuePriority(&readyPriorityQueue, runningPcb);
             printLog(runningPcb, "stopped");
-
-            runningPcb = dequeuePriority(&readyPriorityQueue);
-
-            if (depCheck(runningPcb)) {
-                runPcb(runningPcb, timer);
-            } else {
-                enqueuePriority(&readyPriorityQueue, runningPcb);
-                runningPcb = NULL;
-            }
-        }
-    }
-
-    // Picking next process
-    if (runningPcb == NULL && !isPriorityQueueEmpty(&readyPriorityQueue)) {
-        PCB* nextPcb = dequeuePriority(&readyPriorityQueue);
-        if (depCheck(nextPcb)) {
-            runningPcb = nextPcb;
-            runPcb(runningPcb, timer);
-        } else {
-            enqueuePriority(&readyPriorityQueue, nextPcb);
             runningPcb = NULL;
         }
     }
 
-    // Update remaining time
+    // Picking next process (dependency-safe, no infinite loop)
+    if (runningPcb == NULL) {
+        PCB* dep[1000];
+        int depCount = 0;
+
+        PCB* candidate = NULL;
+
+        while (!isPriorityQueueEmpty(&readyPriorityQueue)) {
+            PCB* p = dequeuePriority(&readyPriorityQueue);
+
+            if (depCheck(p)) {
+                candidate = p;
+                break;
+            } else {
+                dep[depCount++] = p;
+            }
+        }
+
+        for (int i = 0; i < depCount; i++)
+            enqueuePriority(&readyPriorityQueue, dep[i]);
+
+        if (candidate != NULL) {
+            runningPcb = candidate;
+            runPcb(runningPcb, timer);
+        }
+    }
+
+    // UPDATE REMAINING TIME
     if (runningPcb != NULL && runningPcb->REMAINING_TIME > 0) {
         runningPcb->REMAINING_TIME--;
         runningPcb->LAST_EXECUTED_TIME = timer;
@@ -487,6 +496,7 @@ int main(int argc, char * argv[])
 
                     pcbArray[pcbCount++] = p;
                     enqueuePriority(&readyPriorityQueue, p);
+                    if (selected_Algorithm_NUM == 1) childFinished = 1;
                     break;
                 case 2:
                     // SRTN
