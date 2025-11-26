@@ -185,6 +185,7 @@ PCB* runningPcb = NULL;
 PcbPriorityQueue readyPriorityQueue;
 int timer = 0;
 int childFinished = 0;
+int finishedProcess = 0;
 
 PCB* getPcbById(int processId) {
     for (int i = 0; i < pcbCount; i++)
@@ -219,45 +220,9 @@ void printPriorityQueue(PcbPriorityQueue* queue) {
     printf("NULL\n");
 }
 
-void printPCB(PCB* p) {
-    if (!p) {
-        printf("PCB = NULL\n");
-        return;
-    }
-
-    printf("--------------------------------------------------\n");
-    printf("PCB for process %d\n", p->process_id);
-    printf("--------------------------------------------------\n");
-
-    printf("Process PID        : %d\n", p->process_pid);
-    printf("Priority           : %d\n", p->priority);
-    printf("Dependency ID      : %d\n", p->dependency_id);
-
-    printf("State              : ");
-    switch (p->process_state) {
-        case Ready:    printf("READY\n"); break;
-        case Running:  printf("RUNNING\n"); break;
-        case Finished: printf("FINISHED\n"); break;
-        default:       printf("UNKNOWN\n"); break;
-    }
-
-    printf("Started?           : %s\n", p->STARTED ? "YES" : "NO");
-    printf("Completed?         : %s\n", p->is_completed ? "YES" : "NO");
-
-    printf("Arrival Time       : %d\n", p->arrival_time);
-    printf("Start Time         : %d\n", p->START_TIME);
-    printf("Last Exec Time     : %d\n", p->LAST_EXECUTED_TIME);
-    printf("Finish Time        : %d\n", p->FINISH_TIME);
-
-    printf("Requested Runtime  : %d\n", p->RUNNING_TIME);
-    printf("Remaining Time     : %d\n", p->REMAINING_TIME);
-
-    printf("--------------------------------------------------\n\n");
-}
-
 void printLog(PCB* p, char *string) 
 {
-    pFile = fopen("scheduler_log.txt", "a");
+    pFile = fopen("scheduler.log", "a");
 
     if (strcmp(string, "finished") == 0)
     {
@@ -297,7 +262,7 @@ void printLog(PCB* p, char *string)
 void runPcb(PCB* p, int currentTick) {
     if (!p->STARTED) {
         int pid = fork();
-        if (pid == 0) { // child
+        if (pid == 0) {
             char timeArg[16];
             sprintf(timeArg, "%d", p->REMAINING_TIME);
             execl("./process2.out", "./process2.out", timeArg, NULL);
@@ -320,33 +285,22 @@ void runPcb(PCB* p, int currentTick) {
 
         printLog(p, "resumed");
     }
-    printPCB(p);
 }
 
 bool depCheck(PCB* p) {
-    // Case 1: No dependency
     if (p->dependency_id == -1)
         return true;
 
-    // Get the PCB of the dependency
     PCB* depPcb = getPcbById(p->dependency_id);
 
-    // Case 2: Dependency not arrived yet
-    if (depPcb == NULL)
+    if (depPcb == NULL || depPcb->is_completed == false)
         return false;
 
-    // Case 3: Dependency arrived but not finished
-    if (depPcb->is_completed == false)
-        return false;
-
-    // Case 4: Dependency finished
     return true;
 }
 
 void hpfLoop(int currentTick) {
     timer = currentTick;
-
-    // PREEMPTION CHECK
     if (runningPcb != NULL && !isPriorityQueueEmpty(&readyPriorityQueue)) {
         PCB* top = peekPriorityFront(&readyPriorityQueue);
 
@@ -358,7 +312,6 @@ void hpfLoop(int currentTick) {
         }
     }
 
-    // Picking next process (dependency-safe, no infinite loop)
     if (runningPcb == NULL) {
         PCB* dep[1000];
         int depCount = 0;
@@ -385,7 +338,6 @@ void hpfLoop(int currentTick) {
         }
     }
 
-    // UPDATE REMAINING TIME
     if (runningPcb != NULL && runningPcb->REMAINING_TIME > 0) {
         runningPcb->REMAINING_TIME--;
         runningPcb->LAST_EXECUTED_TIME = timer;
@@ -398,25 +350,24 @@ void myHandler(int signum){
     PCB* finished = getPcbByPid(finishedPid);
     if (!finished) return;
 
-    int now = timer; // use the tick snapshot
+    int now = timer;
     finished->FINISH_TIME = now;
     finished->REMAINING_TIME = 0;
     finished->process_state = Finished;
     finished->is_completed = true;
-    printf("now is:%d, finishis:%d\n", now, finished->FINISH_TIME);
 
     printLog(finished, "finished");
 
     runningPcb = NULL;
 
-    // Update dependent processes
+    // update dependent processes
     for (int i = 0; i < pcbCount; i++) {
         if (pcbArray[i]->dependency_id == finished->process_id)
             pcbArray[i]->dependency_id = -1;
     }
 
     childFinished = 1; // main loop will handle next scheduling
-    printPCB(finished);
+    finishedProcess++;
 }
 
 
@@ -569,8 +520,7 @@ int main(int argc, char * argv[])
             childFinished = 0;
         }
 
-
-         if(selected_Algorithm_NUM == 2) {
+        if(selected_Algorithm_NUM == 2) {
         
    
 
@@ -990,8 +940,69 @@ int main(int argc, char * argv[])
                 total_process=-1;
                 
             }
+
+        if(finishedProcess==total_process){
+            float WTA[1000];
+            float wait_time[1000];
+            float total_running_time[1000];
+            float AVGWAITING = 0;
+            float AVGWTA = 0;
+            float running = 0;
+            float std_dev_sqr = 0;
+            int total_time = 0;
+
+            for (int i = 0; i < pcbCount; i++)
+                if (pcbArray[i]->FINISH_TIME > total_time)
+                    total_time = pcbArray[i]->FINISH_TIME;
+
+            for (int i = 0; i < pcbCount; i++)
+            {
+                PCB *p = pcbArray[i];
+
+                int TA = p->FINISH_TIME - p->arrival_time;
+                int W  = TA - p->RUNNING_TIME;
+                float wta_value = (float)TA / p->RUNNING_TIME;
+
+                WTA[i] = wta_value;
+                wait_time[i] = W;
+                total_running_time[i] = p->RUNNING_TIME;
+            }
+
+            for (int i = 0; i < pcbCount; i++) {
+                AVGWTA += WTA[i];
+                AVGWAITING += wait_time[i];
+                running += total_running_time[i];
+            }
+
+            AVGWTA /= pcbCount;
+            AVGWAITING /= pcbCount;
+
+            for (int i = 0; i < pcbCount; i++)
+                std_dev_sqr += pow((WTA[i] - AVGWTA), 2);
+
+            std_dev_sqr /= pcbCount;
+            float std_dev = sqrt(std_dev_sqr);
+
+            FILE *pFile = fopen("scheduler.perf", "w");
+            if (pFile) {
+                fprintf(
+                    pFile,
+                    "Cpu utilization = %f %% \nAvg WTA = %f \nAvg Waiting = %f \nStd WTA = %f\n",
+                    (running / total_time) * 100,
+                    AVGWTA,
+                    AVGWAITING,
+                    std_dev
+                );
+
+                fclose(pFile);
+                printf("\nPerformance File Has Been Generated!\n");
+            }
+            finishedProcess=0;
+            total_process=-1;
         }
         
+    }
+    
     return 0;
     destroyClk(true);
 }
