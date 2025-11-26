@@ -301,13 +301,11 @@ bool depCheck(PCB* p) {
 
 void hpfLoop(int currentTick) {
     timer = currentTick;
+    PCB* top;
     if (runningPcb != NULL && !isPriorityQueueEmpty(&readyPriorityQueue)) {
-        PCB* top = peekPriorityFront(&readyPriorityQueue);
+        top = peekPriorityFront(&readyPriorityQueue);
 
         if (top->priority < runningPcb->priority) {
-            kill(runningPcb->process_pid, SIGSTOP);
-            enqueuePriority(&readyPriorityQueue, runningPcb);
-            printLog(runningPcb, "stopped");
             runningPcb = NULL;
         }
     }
@@ -333,6 +331,13 @@ void hpfLoop(int currentTick) {
             enqueuePriority(&readyPriorityQueue, dep[i]);
 
         if (candidate != NULL) {
+            if (top && top != candidate) {
+                runningPcb = top;
+                kill(runningPcb->process_pid, SIGSTOP);
+                enqueuePriority(&readyPriorityQueue, runningPcb);
+                printLog(runningPcb, "stopped");
+            }
+
             runningPcb = candidate;
             runPcb(runningPcb, timer);
         }
